@@ -1,0 +1,166 @@
+openapi: 3.0.0
+info:
+  title: CineMatch Internal API
+  version: 1.0.0
+  description: Internal API routes for Next.js backend (Server Actions / Route Handlers)
+
+paths:
+  /api/ai/recommend:
+    post:
+      summary: Get TMDB filters from natural language vibe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vibe:
+                  type: string
+                  example: "90s sci-fi thriller with a twist"
+                genre_id:
+                  type: integer
+                  example: 878
+      responses:
+        '200':
+          description: TMDB Filter Parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIRecommendation'
+
+  /api/tmdb/discover:
+    get:
+      summary: Proxy to TMDB Discover API
+      parameters:
+        - name: with_genres
+          in: query
+          schema:
+            type: string
+        - name: with_keywords
+          in: query
+          schema:
+            type: string
+        - name: primary_release_date.gte
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of movies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movie'
+
+  /api/tmdb/genres:
+    get:
+      summary: Proxy to TMDB Genre List
+      responses:
+        '200':
+          description: List of movie genres
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Genre'
+
+  /api/tmdb/movies:
+    get:
+      summary: Get movie details by IDs
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          schema:
+            type: string
+          example: "550,680,680"
+      responses:
+        '200':
+          description: List of movie details
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Movie'
+
+  /api/tmdb/watch:
+    get:
+      summary: Get streaming providers for a movie
+      parameters:
+        - name: movieId
+          in: query
+          required: true
+          schema:
+            type: integer
+          example: 550
+      responses:
+        '200':
+          description: Watch providers grouped by region
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WatchProvider'
+
+components:
+  schemas:
+    AIRecommendation:
+      type: object
+      properties:
+        keywords:
+          type: array
+          items:
+            type: string
+        genre_ids:
+          type: array
+          items:
+            type: integer
+        year_range:
+          type: object
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+        sort_by:
+          type: string
+          enum: [popularity.desc, vote_average.desc]
+    
+    Movie:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        poster_path:
+          type: string
+        overview:
+          type: string
+
+    Genre:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+
+    WatchProvider:
+      type: object
+      properties:
+        provider_name:
+          type: string
+        logo_path:
+          type: string
+        display_priority:
+          type: integer
