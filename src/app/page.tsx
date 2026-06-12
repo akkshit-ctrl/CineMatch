@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Loader2, Sparkles, RefreshCw, Bookmark } from 'lucide-react'
+import GenrePill from '@/components/genre-pill'
+import MovieHero from '@/components/movie-hero'
+import WatchlistPanel from '@/components/watchlist-panel'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Sparkles, X } from 'lucide-react'
-import { Movie } from '@/types'
-import MovieCard from '@/components/movie-card'
+import type { Movie, AIRecommendation, OMDBRatings } from '@/types'
 
 const HISTORY_KEY = 'cinematch_search_history'
 const MAX_HISTORY = 5
@@ -33,17 +34,10 @@ function loadHistory(): SearchEntry[] {
 function saveHistory(entry: SearchEntry) {
   const history = loadHistory()
   const filtered = history.filter(
-    (h) => !(h.vibe === entry.vibe && arraysEqual(h.genreIds, entry.genreIds))
+    (h) => !(h.vibe === entry.vibe && h.genreIds.join(',') === entry.genreIds.join(','))
   )
   const updated = [entry, ...filtered].slice(0, MAX_HISTORY)
   localStorage.setItem(HISTORY_KEY, JSON.stringify(updated))
-}
-
-function arraysEqual(a: number[], b: number[]) {
-  if (a.length !== b.length) return false
-  const sortedA = [...a].sort()
-  const sortedB = [...b].sort()
-  return sortedA.every((val, i) => val === sortedB[i])
 }
 
 function clearHistory() {
@@ -56,10 +50,17 @@ export default function SoloMode() {
   const [genres, setGenres] = useState<Genre[]>([])
   const [loading, setLoading] = useState(false)
   const [movies, setMovies] = useState<Movie[]>([])
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set())
+  const [savedMovies, setSavedMovies] = useState<Movie[]>([])
   const [error, setError] = useState('')
-  const [errorType, setErrorType] = useState<'ai_error' | 'tmdb_error' | 'generic_error' | null>(null)
   const [fallbackNote, setFallbackNote] = useState('')
   const [searchHistory, setSearchHistory] = useState<SearchEntry[]>([])
+  const [aiResult, setAiResult] = useState<AIRecommendation | null>(null)
+  const [omdbCache, setOmdbCache] = useState<Record<number, OMDBRatings>>({})
+  const [movieGenres, setMovieGenres] = useState<Record<number, string[]>>({})
+
+  const omdbFetching = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     setSearchHistory(loadHistory())
@@ -77,13 +78,54 @@ export default function SoloMode() {
     )
   }
 
+  const fetchOmdbRatings = useCallback(async (movieId: number) => {
+    if (omdbCache[movieId] || omdbFetching.current.has(movieId)) return
+    omdbFetching.current.add(movieId)
+    try {
+      const res = await fetch(`/api/omdb/ratings?movieId=${movieId}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.imdb || data.rt) {
+          setOmdbCache((prev) => ({ ...prev, [movieId]: data }))
+        }
+      }
+    } catch {
+      // non-critical
+    }
+  }, [omdbCache])
+
+  const fetchOmdbRatingsForMovies = useCallback(async (movieList: Movie[]) => {
+    for (const movie of movieList) {
+      fetchOmdbRatings(movie.id)
+    }
+  }, [fetchOmdbRatings])
+
+  const fetchMovieGenres = useCallback(async (movieList: Movie[]) => {
+    const genreMap = new Map<number, string>()
+    genres.forEach((g) => genreMap.set(g.id, g.name))
+
+    const newMovieGenres: Record<number, string[]> = {}
+    if (aiResult?.genre_ids) {
+      const names = aiResult.genre_ids
+        .map((id) => genreMap.get(id))
+        .filter(Boolean) as string[]
+      movieList.forEach((movie) => {
+        newMovieGenres[movie.id] = names
+      })
+    }
+    setMovieGenres(newMovieGenres)
+  }, [genres, aiResult])
+
   const doSearch = useCallback(
     async (searchVibe: string, searchGenreIds: number[], isRetry?: boolean) => {
       setLoading(true)
       setError('')
-      setErrorType(null)
       setMovies([])
       setFallbackNote('')
+      setCurrentIndex(0)
+      setAiResult(null)
+      setOmdbCache({})
+      setMovieGenres({})
 
       try {
         const aiRes = await fetch('/api/ai/recommend', {
@@ -98,9 +140,10 @@ export default function SoloMode() {
         const aiData = await aiRes.json()
 
         if (!aiRes.ok || aiData.error) {
-          setErrorType('ai_error')
           throw new Error(aiData.error || 'AI recommendation failed')
         }
+
+        setAiResult(aiData)
 
         const tmdbParams = new URLSearchParams({
           with_genres: aiData.genre_ids.join(','),
@@ -111,12 +154,21 @@ export default function SoloMode() {
 
         const tmdbRes = await fetch(`/api/tmdb/discover?${tmdbParams}`)
         if (!tmdbRes.ok) {
-          setErrorType('tmdb_error')
           throw new Error('Failed to fetch movies')
         }
 
-        const tmdbData = await tmdbRes.json()
-        setMovies(tmdbData)
+        const tmdbData: Movie[] = await tmdbRes.json()
+
+        if (tmdbData.length === 0) {
+          setMovies([])
+          setLoading(false)
+          setError('No movies found for this vibe. Try different genres or keywords.')
+          return
+        }
+
+        setMovies(tmdbData.slice(0, 20))
+        fetchOmdbRatingsForMovies(tmdbData.slice(0, 20))
+        fetchMovieGenres(tmdbData.slice(0, 20))
 
         saveHistory({ vibe: searchVibe.trim(), genreIds: searchGenreIds })
         setSearchHistory(loadHistory())
@@ -127,17 +179,16 @@ export default function SoloMode() {
           try {
             const fbRes = await fetch(`/api/tmdb/discover?${fbParams}`)
             if (fbRes.ok) {
-              const fbData = await fbRes.json()
-              setMovies(fbData)
+              const fbData: Movie[] = await fbRes.json()
+              setMovies(fbData.slice(0, 20))
+              fetchOmdbRatingsForMovies(fbData.slice(0, 20))
               setFallbackNote(
                 'AI recommendations unavailable — showing popular picks instead'
               )
             } else {
-              setErrorType('tmdb_error')
               setError('The movie database is currently down.')
             }
           } catch {
-            setErrorType('generic_error')
             setError('Something went wrong.')
           }
         } else {
@@ -147,183 +198,186 @@ export default function SoloMode() {
         setLoading(false)
       }
     },
-    []
+    [fetchOmdbRatingsForMovies, fetchMovieGenres]
   )
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!vibe.trim()) return
+  const handleSearch = async () => {
+    if (!vibe.trim() && genreIds.length === 0) return
     doSearch(vibe, genreIds)
   }
 
-  const handleChipClick = (entry: SearchEntry) => {
-    setVibe(entry.vibe)
-    setGenreIds(entry.genreIds)
+  const handleSave = (movieId: number) => {
+    if (savedIds.has(movieId)) return
+    setSavedIds((prev) => new Set(prev).add(movieId))
+    const movie = movies.find((m) => m.id === movieId)
+    if (movie) {
+      setSavedMovies((prev) => [...prev, movie])
+    }
   }
 
-  const handleClearHistory = () => {
-    clearHistory()
-    setSearchHistory([])
+  const handleSkip = () => {
+    if (currentIndex < movies.length - 1) {
+      setCurrentIndex((i) => i + 1)
+    }
   }
 
+  const handleRemoveSaved = (movieId: number) => {
+    setSavedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(movieId)
+      return next
+    })
+    setSavedMovies((prev) => prev.filter((m) => m.id !== movieId))
+  }
+
+  const handleSelectSaved = (movie: Movie) => {
+    const idx = movies.findIndex((m) => m.id === movie.id)
+    if (idx !== -1) {
+      setCurrentIndex(idx)
+    }
+  }
+
+  const handleRetry = () => {
+    doSearch(vibe, genreIds, true)
+  }
+
+  const handleNewSearch = () => {
+    setMovies([])
+    setCurrentIndex(0)
+    setSavedIds(new Set())
+    setSavedMovies([])
+    setAiResult(null)
+    setOmdbCache({})
+    setMovieGenres({})
+    setError('')
+    setFallbackNote('')
+  }
+
+  const currentMovie = movies[currentIndex]
+  const hasResults = movies.length > 0
+  const allCaughtUp = currentIndex >= movies.length - 1 && movies.length > 0
   const selectedGenreNames = genreIds
     .map((id) => genres.find((g) => g.id === id)?.name)
     .filter(Boolean) as string[]
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-12">
-      <div className="text-center mb-12 space-y-4">
-        <h1 className="text-4xl md:text-6xl font-bold tracking-tighter bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+    <div className="container mx-auto max-w-lg px-4 py-8 pb-24">
+      <div className="text-center mb-8 space-y-2">
+        <h1 className="font-display text-3xl md:text-4xl text-accent-gold tracking-tight">
           CineMatch
         </h1>
-        <p className="text-muted-foreground text-lg">
-          Describe your vibe, find your movie.
+        <p className="text-muted-foreground text-sm">
+          Find your next watch
         </p>
       </div>
 
-      <Card className="bg-card/50 backdrop-blur-sm border-primary/20 mb-8">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-            Tell me what you&apos;re in the mood for
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSearch} className="space-y-5">
-            <textarea
-              placeholder="e.g., '90s sci-fi thriller with a twist' or 'cozy ghibli vibes' or 'something like Inception meets The Matrix'..."
-              value={vibe}
-              onChange={(e) => setVibe(e.target.value)}
-              rows={4}
-              className="w-full rounded-xl border border-input bg-card/50 backdrop-blur-sm px-4 py-3 text-lg ring-offset-background placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 resize-none transition-shadow shadow-sm focus-visible:shadow-md"
-            />
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground font-medium">
-                Filter by genre (optional — pick as many as you like)
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={genreIds.length === 0}
-                  onClick={() => setGenreIds([])}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    genreIds.length === 0
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                  }`}
-                >
-                  Any Genre
-                </button>
-                {genres.map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={genreIds.includes(g.id)}
-                    onClick={() => toggleGenre(g.id)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                      genreIds.includes(g.id)
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'bg-muted hover:bg-muted/80 text-muted-foreground'
-                    }`}
-                  >
-                    {g.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button type="submit" size="lg" disabled={loading || !vibe.trim()} className="h-13 px-10 text-base font-semibold">
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    Finding movies...
-                  </>
-                ) : (
-                  'Find Movies'
-                )}
-              </Button>
-              {selectedGenreNames.length > 0 && (
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <span>in</span>
-                  {selectedGenreNames.map((name) => (
-                    <span key={name} className="inline-flex items-center gap-0.5 bg-muted px-2 py-0.5 rounded-full text-xs">
-                      {name}
-                      <button type="button" onClick={() => {
-  const found = genres.find((g) => g.name === name)
-  if (found) toggleGenre(found.id)
-}}>
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </form>
-          {errorType === 'ai_error' && !fallbackNote && (
-            <div className="mt-4 text-sm space-y-2">
-              <p className="text-yellow-400">
-                Our AI recommendation engine is temporarily unavailable.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => doSearch(vibe, genreIds, true)}
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
-          {errorType === 'tmdb_error' && (
-            <div className="mt-4 text-sm space-y-2">
-              <p className="text-red-400">The movie database is currently down.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => doSearch(vibe, genreIds, true)}
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
-          {errorType === 'generic_error' && (
-            <div className="mt-4 text-sm space-y-2">
-              <p className="text-red-400">{error || 'Something went wrong.'}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => doSearch(vibe, genreIds, true)}
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
-          {error && !errorType && <p className="text-red-400 mt-4 text-sm">{error}</p>}
-          {fallbackNote && (
-            <p className="text-yellow-400 mt-4 text-sm">{fallbackNote}</p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="space-y-5 mb-8">
+        <div>
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+            Genres
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setGenreIds([])}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 border ${
+                genreIds.length === 0
+                  ? 'bg-accent-gold/15 text-accent-gold border-accent-gold'
+                  : 'bg-transparent text-muted-foreground border-accent-gold/10 hover:border-accent-gold/30 hover:text-foreground'
+              }`}
+            >
+              Any Genre
+            </button>
+            {genres.map((g) => (
+              <GenrePill
+                key={g.id}
+                name={g.name}
+                selected={genreIds.includes(g.id)}
+                onClick={() => toggleGenre(g.id)}
+              />
+            ))}
+          </div>
+        </div>
 
-      {searchHistory.length > 0 && (
+        <div>
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">
+            Describe the vibe
+          </p>
+          <textarea
+            placeholder="e.g., zombies in space, 90s coming-of-age, slow burn mystery..."
+            value={vibe}
+            onChange={(e) => setVibe(e.target.value)}
+            rows={3}
+            className="w-full rounded-lg bg-elevated border border-accent-gold/10 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-gold/50 resize-none transition-shadow"
+          />
+        </div>
+
+        <Button
+          onClick={handleSearch}
+          disabled={loading || (!vibe.trim() && genreIds.length === 0)}
+          variant="gold"
+          size="lg"
+          className="w-full h-12 text-base"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              Finding movies...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 mr-2" />
+              Discover
+            </>
+          )}
+        </Button>
+      </div>
+
+      {selectedGenreNames.length > 0 && !hasResults && (
+        <div className="flex items-center justify-center gap-1.5 text-sm text-muted-foreground mb-4">
+          <span>Selected:</span>
+          {selectedGenreNames.map((name) => (
+            <span key={name} className="bg-muted px-2 py-0.5 rounded-full text-xs text-muted-foreground">
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {error && !hasResults && (
+        <div className="text-center space-y-3 mb-8">
+          <p className="text-sm text-red-400">{error}</p>
+          <Button variant="gold-outline" size="sm" onClick={handleRetry}>
+            <RefreshCw className="w-4 h-4 mr-1.5" />
+            Try Again
+          </Button>
+        </div>
+      )}
+
+      {fallbackNote && (
+        <p className="text-xs text-yellow-400/80 text-center mb-4">{fallbackNote}</p>
+      )}
+
+      {searchHistory.length > 0 && !hasResults && (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm text-muted-foreground">Recent searches:</span>
+            <span className="text-xs text-muted-foreground">Recent searches:</span>
             <button
-              onClick={handleClearHistory}
+              onClick={() => { clearHistory(); setSearchHistory([]) }}
               className="text-xs text-muted-foreground hover:text-foreground underline"
             >
-              Clear history
+              Clear
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
             {searchHistory.map((entry, i) => (
               <button
                 key={`${entry.vibe}-${entry.genreIds.join(',')}-${i}`}
-                onClick={() => handleChipClick(entry)}
-                className="bg-muted hover:bg-muted/80 text-sm px-3 py-1 rounded-full transition-colors"
+                onClick={() => {
+                  setVibe(entry.vibe)
+                  setGenreIds(entry.genreIds)
+                }}
+                className="bg-muted hover:bg-muted/80 text-xs px-3 py-1 rounded-full transition-colors text-muted-foreground"
               >
                 {entry.genreIds.length > 0
                   ? `${entry.genreIds.map((id) => genres.find((g) => g.id === id)?.name || id).join(', ')}: ${entry.vibe}`
@@ -334,11 +388,84 @@ export default function SoloMode() {
         </div>
       )}
 
-      {movies.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {movies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} />
-          ))}
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full border-2 border-accent-gold/30 border-t-accent-gold animate-spin" />
+            <p className="text-sm text-muted-foreground">Finding your next watch...</p>
+          </div>
+        </div>
+      )}
+
+      {hasResults && currentMovie && !loading && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Bookmark className="w-3.5 h-3.5" />
+            <span>Swipe right to save, left to skip</span>
+          </div>
+
+          <MovieHero
+            key={currentMovie.id + (savedIds.has(currentMovie.id) ? '-saved' : '')}
+            movie={currentMovie}
+            omdbRatings={omdbCache[currentMovie.id]}
+            genres={movieGenres[currentMovie.id]}
+            currentIndex={currentIndex}
+            totalCount={movies.length}
+            saved={savedIds.has(currentMovie.id)}
+            onSave={() => handleSave(currentMovie.id)}
+            onSkip={() => handleSkip()}
+            onSwipeEnd={() => {}}
+          />
+
+          <div className="flex items-center justify-center gap-1.5">
+            {movies.map((m, i) => (
+              <div
+                key={m.id}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  i === currentIndex
+                    ? 'w-6 bg-accent-gold'
+                    : savedIds.has(m.id)
+                      ? 'w-1.5 bg-accent-gold/40'
+                      : i < currentIndex
+                        ? 'w-1.5 bg-muted'
+                        : 'w-1.5 bg-muted'
+                }`}
+              />
+            ))}
+          </div>
+
+          <div className="text-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNewSearch}
+              className="text-xs text-muted-foreground"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              New Search
+            </Button>
+          </div>
+
+          <WatchlistPanel
+            savedMovies={savedMovies}
+            onSelect={handleSelectSaved}
+            onRemove={handleRemoveSaved}
+          />
+        </div>
+      )}
+
+      {allCaughtUp && !loading && (
+        <div className="text-center space-y-4 py-8">
+          <p className="text-lg font-display text-foreground">All caught up! ✨</p>
+          <p className="text-sm text-muted-foreground">
+            {savedMovies.length > 0
+              ? `You saved ${savedMovies.length} movie${savedMovies.length > 1 ? 's' : ''}.`
+              : 'No movies caught your eye?'}
+          </p>
+          <Button variant="gold" onClick={handleNewSearch}>
+            <Sparkles className="w-4 h-4 mr-2" />
+            Discover Again
+          </Button>
         </div>
       )}
     </div>
