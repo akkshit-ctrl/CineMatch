@@ -8,14 +8,19 @@ import type { Movie } from '@/types'
 
 const IMG_BASE = 'https://image.tmdb.org/t/p/w500'
 
-interface SwipeDeckProps {
+interface SoloSwipeDeckProps {
   movies: Movie[]
   currentIndex: number
-  onSwipeLeft: (movieId: number) => void
-  onSwipeRight: (movieId: number) => void
+  onSave: (movieId: number) => void
+  onSkip: (movieId: number) => void
 }
 
-const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeLeft, onSwipeRight }: SwipeDeckProps) {
+const SoloSwipeDeck = React.memo(function SoloSwipeDeck({
+  movies,
+  currentIndex,
+  onSave,
+  onSkip,
+}: SoloSwipeDeckProps) {
   const current = movies[currentIndex]
   const nextMovies = movies.slice(currentIndex + 1, currentIndex + 3)
   const isAnimating = useRef(false)
@@ -23,34 +28,37 @@ const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeL
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-300, 0, 300], [-15, 0, 15])
 
-  const nopeOpacity = useTransform(x, (v: number) => {
+  const skipOpacity = useTransform(x, (v: number) => {
     if (v >= -100) return 0
     return Math.min(1, (-v - 100) / 100)
   })
 
-  const likeOpacity = useTransform(x, (v: number) => {
+  const saveOpacity = useTransform(x, (v: number) => {
     if (v <= 100) return 0
     return Math.min(1, (v - 100) / 100)
   })
 
-  const handleDragEnd = useCallback(async (_: unknown, info: { offset: { x: number } }) => {
-    if (!current || isAnimating.current) return
+  const handleDragEnd = useCallback(
+    async (_: unknown, info: { offset: { x: number } }) => {
+      if (!current || isAnimating.current) return
 
-    const offset = info.offset.x
-    if (offset < -100) {
-      isAnimating.current = true
-      await animate(x, -500, { duration: 0.2, ease: 'easeOut' })
-      isAnimating.current = false
-      onSwipeLeft(current.id)
-    } else if (offset > 100) {
-      isAnimating.current = true
-      await animate(x, 500, { duration: 0.2, ease: 'easeOut' })
-      isAnimating.current = false
-      onSwipeRight(current.id)
-    } else {
-      animate(x, 0, { type: 'spring', stiffness: 300, damping: 20 })
-    }
-  }, [current, onSwipeLeft, onSwipeRight, x])
+      const offset = info.offset.x
+      if (offset < -100) {
+        isAnimating.current = true
+        await animate(x, -500, { duration: 0.2, ease: 'easeOut' })
+        isAnimating.current = false
+        onSkip(current.id)
+      } else if (offset > 100) {
+        isAnimating.current = true
+        await animate(x, 500, { duration: 0.2, ease: 'easeOut' })
+        isAnimating.current = false
+        onSave(current.id)
+      } else {
+        animate(x, 0, { type: 'spring', stiffness: 300, damping: 20 })
+      }
+    },
+    [current, onSave, onSkip, x],
+  )
 
   if (!current) return null
 
@@ -62,7 +70,7 @@ const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeL
         return (
           <div
             key={movie.id}
-            className="absolute inset-0 rounded-lg overflow-hidden border border-accent-gold/10 bg-card/30"
+            className="absolute inset-0 rounded-lg overflow-hidden border border-primary/10 bg-card/30"
             style={{
               transform: `scale(${scale}) translateY(${translateY}px)`,
               zIndex: 5 - (i + 1),
@@ -126,17 +134,17 @@ const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeL
             </div>
 
             <motion.div
-              className="absolute top-8 right-8 border-[3px] border-red-500 rounded-lg px-3 py-1.5 -rotate-[15deg] pointer-events-none"
-              style={{ opacity: nopeOpacity }}
+              className="absolute top-8 left-8 border-[3px] border-white/70 rounded-lg px-3 py-1.5 -rotate-[15deg] pointer-events-none"
+              style={{ opacity: skipOpacity }}
             >
-              <span className="text-red-500 text-2xl font-extrabold tracking-wider select-none">NOPE</span>
+              <span className="text-white/70 text-2xl font-extrabold tracking-wider select-none">SKIP</span>
             </motion.div>
 
             <motion.div
-              className="absolute top-8 left-8 border-[3px] border-green-500 rounded-lg px-3 py-1.5 rotate-[15deg] pointer-events-none"
-              style={{ opacity: likeOpacity }}
+              className="absolute top-8 right-8 border-[3px] border-accent-gold rounded-lg px-3 py-1.5 rotate-[15deg] pointer-events-none"
+              style={{ opacity: saveOpacity }}
             >
-              <span className="text-green-500 text-2xl font-extrabold tracking-wider select-none">LIKE</span>
+              <span className="text-accent-gold text-2xl font-extrabold tracking-wider select-none">SAVE</span>
             </motion.div>
           </div>
         </div>
@@ -145,4 +153,4 @@ const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeL
   )
 })
 
-export default SwipeDeck
+export default SoloSwipeDeck

@@ -39,3 +39,9 @@ export interface AIRecommendation {
   }
   sort_by: 'popularity.desc' | 'vote_average.desc'
 }
+
+export interface OMDBRatings {
+  imdb: string
+  rt: string
+  metacritic: string
+}

@@ -5,9 +5,9 @@ import { motion, animate } from 'framer-motion'
 import { Movie } from '@/types'
 
 const COLORS = [
-  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
-  '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
-  '#BB8FCE', '#85C1E9', '#F0B27A', '#82E0AA',
+  '#D4AF37', '#C49B2D', '#B8860B', '#A67C00',
+  '#DAA520', '#CDA434', '#BF8F00', '#D4A843',
+  '#C9A032', '#BD9620', '#D4AF37', '#C49B2D',
 ]
 
 interface WheelProps {
@@ -49,7 +49,7 @@ export default function Wheel({ movies, winnerId, spinning, durationMs = 5000, o
 
   if (movies.length === 0) {
     return (
-      <div className="flex items-center justify-center w-72 h-72 rounded-full bg-muted/50 text-muted-foreground">
+      <div className="flex items-center justify-center w-72 h-72 rounded-full bg-muted/50 text-accent-gold/50">
         No movies in the pool
       </div>
     )
@@ -58,10 +58,10 @@ export default function Wheel({ movies, winnerId, spinning, durationMs = 5000, o
   return (
     <div className="relative flex items-center justify-center">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-10">
-        <div className="w-0 h-0 border-l-[12px] border-r-[12px] border-t-[20px] border-l-transparent border-r-transparent border-t-primary" />
+        <div className="w-0 h-0 border-l-[12px] border-r-[12px] border-t-[20px] border-l-transparent border-r-transparent border-t-accent-gold" />
       </div>
       <motion.div
-        className="relative w-72 h-72 rounded-full overflow-hidden shadow-2xl border-4 border-border"
+        className="relative w-72 h-72 rounded-full overflow-hidden shadow-2xl border-4 border-accent-gold/30"
         style={{
           rotate: rotation,
           background: `conic-gradient(${movies.map(

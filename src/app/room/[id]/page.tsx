@@ -172,7 +172,7 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
   if (!roomId || loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent-gold" />
         <p className="text-muted-foreground text-sm">Loading room...</p>
       </div>
     )
@@ -193,24 +193,24 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
   return (
     <div className="container mx-auto max-w-lg px-4 py-12">
       {showHostLeftBanner && (
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3 text-sm text-yellow-200 text-center mb-4">
+        <div className="bg-accent-gold/10 border border-accent-gold/30 rounded-lg px-4 py-3 text-sm text-accent-gold text-center mb-4">
           The host has left. You are now the host.
         </div>
       )}
 
-      <Card className="bg-card/50 backdrop-blur-sm border-primary/20">
+      <Card className="bg-surface border border-accent-gold/10 rounded-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Waiting Room</CardTitle>
+          <CardTitle className="text-2xl font-display text-accent-gold">Waiting Room</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="text-center space-y-2">
             <p className="text-sm text-muted-foreground">Share this code with friends</p>
             <div className="flex items-center justify-center gap-3">
-              <span className="text-5xl tracking-[0.3em] font-mono font-bold text-primary">
+              <span className="font-mono text-accent-gold text-4xl tracking-[0.2em]">
                 {room.id}
               </span>
               <Button
-                variant="outline"
+                variant="gold-outline"
                 size="icon"
                 onClick={handleCopyCode}
                 className="shrink-0"
@@ -221,9 +221,9 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
           </div>
 
           {isHost && (
-            <div className="border-t border-border pt-6 space-y-3">
+            <div className="border-t border-accent-gold/10 pt-6 space-y-3">
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Sparkles className="w-4 h-4 text-yellow-400" />
+                <Sparkles className="w-4 h-4 text-accent-gold" />
                 <span className="text-sm font-medium">Set a vibe (optional)</span>
               </div>
               <textarea
@@ -231,11 +231,11 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
                 value={vibeDescription}
                 onChange={(e) => setVibeDescription(e.target.value)}
                 rows={2}
-                className="w-full rounded-lg border border-input bg-card/50 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary resize-none"
+                className="w-full rounded-lg bg-elevated border border-accent-gold/10 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-gold/40 resize-none"
               />
               <div className="flex items-center gap-2">
                 <Button
-                  variant="outline"
+                  variant="gold-outline"
                   size="sm"
                   onClick={handleAnalyzeVibe}
                   disabled={analyzingVibe || !vibeDescription.trim()}
@@ -248,19 +248,19 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
                   Analyze Vibe
                 </Button>
                 {vibeResult && (
-                  <span className="text-xs text-green-400 flex items-center gap-1">
+                  <span className="text-xs text-success flex items-center gap-1">
                     <Check className="w-3 h-3" />
                     {vibeResult.genre_ids.length} genre{vibeResult.genre_ids.length > 1 ? 's' : ''} set
                   </span>
                 )}
               </div>
               {vibeError && (
-                <p className="text-xs text-red-400">{vibeError}</p>
+                <p className="text-xs text-destructive">{vibeError}</p>
               )}
             </div>
           )}
 
-          <div className="border-t border-border pt-6">
+          <div className="border-t border-accent-gold/10 pt-6">
             <div className="flex items-center justify-center gap-2 text-muted-foreground mb-4">
               <Users className="w-4 h-4" />
               <span className="text-sm">
@@ -277,11 +277,11 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
                 return (
                   <div
                     key={p.user_id}
-                    className="flex items-center gap-3 bg-muted/50 rounded-lg px-4 py-3"
+                    className="flex items-center gap-3 bg-muted/30 border border-accent-gold/5 rounded-lg px-4 py-3"
                   >
                     <div className="relative shrink-0">
-                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-sm font-bold text-primary">
+                      <div className={`w-10 h-10 rounded-full bg-accent-gold/20 flex items-center justify-center ${isParticipantHost ? 'ring-2 ring-accent-gold' : ''}`}>
+                        <span className="text-sm font-bold text-accent-gold">
                           {p.name.slice(0, 2).toUpperCase()}
                         </span>
                       </div>
@@ -293,7 +293,7 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
                       </span>
                     </div>
                     {isParticipantHost && (
-                      <span className="text-xs flex items-center gap-1 text-yellow-400 shrink-0">
+                      <span className="text-xs flex items-center gap-1 text-accent-gold shrink-0">
                         <Crown className="w-3 h-3" />
                         Host
                       </span>
@@ -309,6 +309,7 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
               <Button
                 onClick={handleStart}
                 disabled={starting}
+                variant="gold"
                 className="w-full h-12 text-lg"
               >
                 {starting ? (
@@ -327,7 +328,8 @@ export default function LobbyPage({ params }: { params: Promise<{ id: string }> 
           )}
 
           {!isHost && (
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-gold/50 animate-pulse inline-block" />
               Waiting for the host to start...
             </p>
           )}

@@ -169,7 +169,7 @@ export default function SpinPage({
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent-gold" />
       </div>
     )
   }
@@ -189,18 +189,18 @@ export default function SpinPage({
 
   return (
     <div className="container mx-auto max-w-lg px-4 py-12">
-      <Card className="bg-card/50 backdrop-blur-sm border-primary/20">
+      <Card className="bg-surface border border-accent-gold/10 rounded-xl">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl flex items-center justify-center gap-2">
+          <CardTitle className={`text-2xl flex items-center justify-center gap-2 ${winner ? '' : ''}`}>
             {winner ? (
               <>
-                <Trophy className="w-6 h-6 text-yellow-400" />
-                Tonight&apos;s Pick
+                <Trophy className="w-6 h-6 text-accent-gold" />
+                <span className="font-display text-accent-gold">Tonight&apos;s Pick</span>
               </>
             ) : (
               <>
-                <RotateCw className="w-6 h-6" />
-                The Wheel
+                <RotateCw className="w-6 h-6 text-accent-gold" />
+                <span className="font-display text-accent-gold">The Wheel</span>
               </>
             )}
           </CardTitle>
@@ -215,7 +215,7 @@ export default function SpinPage({
         <CardContent className="space-y-6">
           {winner ? (
             <div className="text-center space-y-4">
-              <div className="relative aspect-[2/3] max-w-[250px] mx-auto rounded-xl overflow-hidden shadow-2xl border-2 border-yellow-400/50">
+              <div className="relative aspect-[2/3] max-w-[250px] mx-auto rounded-xl overflow-hidden shadow-2xl shadow-[0_0_30px_rgba(212,175,55,0.2)] border-2 border-accent-gold/50">
                 {winner.poster_path ? (
                   <Image
                     src={`https://image.tmdb.org/t/p/w500${winner.poster_path}`}
@@ -234,7 +234,7 @@ export default function SpinPage({
                 <h2 className="text-2xl font-bold">{winner.title}</h2>
                 <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground mt-1">
                   <span className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    <Star className="w-4 h-4 fill-accent-gold text-accent-gold" />
                     {winner.vote_average.toFixed(1)}
                   </span>
                   <span>{winner.release_date?.slice(0, 4)}</span>
@@ -273,7 +273,7 @@ export default function SpinPage({
               )}
               <Button
                 onClick={() => router.push('/room')}
-                variant="outline"
+                variant="gold-outline"
                 className="mt-4"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
@@ -291,12 +291,13 @@ export default function SpinPage({
               />
               {spinning ? (
                 <div className="text-center space-y-2">
-                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-accent-gold" />
                   <p className="text-sm text-muted-foreground">Spinning...</p>
                 </div>
               ) : showSpinButton ? (
                 <Button
                   onClick={handleSpin}
+                  variant="gold"
                   size="lg"
                   className="text-lg px-8 h-12 w-full max-w-xs"
                 >
@@ -304,7 +305,8 @@ export default function SpinPage({
                   Spin the Wheel
                 </Button>
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-gold/50 animate-pulse inline-block" />
                   Waiting for the host to spin...
                 </p>
               )}
@@ -314,7 +316,7 @@ export default function SpinPage({
               <p className="text-muted-foreground">
                 No movies matched. Try again with a different group.
               </p>
-              <Button onClick={() => router.push('/room')} variant="outline">
+              <Button onClick={() => router.push('/room')} variant="gold-outline">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Rooms
               </Button>

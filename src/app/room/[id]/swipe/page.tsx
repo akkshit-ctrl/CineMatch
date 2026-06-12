@@ -202,7 +202,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent-gold" />
       </div>
     )
   }
@@ -219,7 +219,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
   return (
     <div className="container mx-auto max-w-lg px-4 py-8">
       <div className="text-center mb-6">
-        <h1 className="text-2xl font-bold">Swipe & Vote</h1>
+        <h1 className="text-2xl font-display text-accent-gold">Swipe & Vote</h1>
         <p className="text-sm text-muted-foreground mt-1">
           {allVoted
             ? 'You\'ve voted on all movies!'
@@ -237,7 +237,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
             onSwipeRight={handleSwipeRight}
           />
         ) : allVoted ? (
-          <div className="w-full h-full rounded-lg border border-primary/20 bg-card/50 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-full h-full rounded-lg bg-surface border border-accent-gold/10 flex flex-col items-center justify-center p-8 text-center">
             <h2 className="text-2xl font-bold mb-2">All Done!</h2>
             <p className="text-muted-foreground mb-6">
               {isHost
@@ -250,6 +250,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
                 <Button
                   onClick={handleFinish}
                   disabled={calculating}
+                  variant="gold"
                   size="lg"
                   className="text-lg px-8"
                 >
@@ -261,7 +262,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
                 {noMatches && (
                   <Button
                     onClick={handleLowerThreshold}
-                    variant="outline"
+                    variant="gold-outline"
                     size="sm"
                     disabled={calculating}
                   >
@@ -273,14 +274,14 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
                 )}
                 <Button
                   onClick={() => window.location.reload()}
-                  variant="outline"
+                  variant="gold-outline"
                   size="sm"
                 >
                   Load More Movies
                 </Button>
               </div>
             ) : (
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <Loader2 className="w-6 h-6 animate-spin text-accent-gold" />
             )}
           </div>
         ) : null}
@@ -292,7 +293,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
             <Button
               variant="outline"
               size="icon"
-              className="h-12 w-12 rounded-full border-red-500/50 hover:bg-red-500/10 hover:border-red-500"
+              className="h-12 w-12 rounded-full border-destructive/50 hover:bg-destructive/10 hover:border-destructive"
               onClick={() => handleVote(current.id, false)}
               disabled={voting}
               aria-label="Vote no"
@@ -302,7 +303,7 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
             <Button
               variant="outline"
               size="icon"
-              className="h-12 w-12 rounded-full border-green-500/50 hover:bg-green-500/10 hover:border-green-500"
+              className="h-12 w-12 rounded-full border-success/50 hover:bg-success/10 hover:border-success"
               onClick={() => handleVote(current.id, true)}
               disabled={voting}
               aria-label="Vote yes"
@@ -340,9 +341,9 @@ export default function SwipePage({ params }: { params: Promise<{ id: string }> 
             key={i}
             className={`h-1.5 rounded-full transition-all duration-300 ${
               i === currentIndex
-                ? 'w-6 bg-primary'
+                ? 'w-6 bg-accent-gold'
                 : votedIds.has(movies[i].id)
-                  ? 'w-1.5 bg-primary/40'
+                  ? 'w-1.5 bg-accent-gold/40'
                   : 'w-1.5 bg-muted'
             }`}
           />
