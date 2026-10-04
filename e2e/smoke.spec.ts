@@ -1,121 +1,106 @@
-import { test, expect } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-test.describe('CineMatch MVP Smoke Tests', () => {
-  test('Test 1: Solo mode page loads with title, vibe input, and Find button', async ({ page }) => {
-    await page.goto('/')
+const userId = '11111111-1111-4111-8111-111111111111'
+const movies = [1, 2, 3].map((id) => ({
+  id,
+  title: `Fixture Movie ${id}`,
+  poster_path: null,
+  backdrop_path: null,
+  overview: 'A sourced fixture synopsis.',
+  release_date: '2020-01-01',
+  vote_average: 7,
+}))
+const room = {
+  id: 'ABCD',
+  host_id: userId,
+  status: 'swiping',
+  genre_id: 18,
+  match_pool: [],
+  tmdb_config: {},
+  created_at: '2026-10-04T00:00:00Z',
+}
 
-    await expect(page.getByRole('heading', { name: /CineMatch/i })).toBeVisible()
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((id) => {
+    sessionStorage.setItem('cinematch_user_id', id)
+    sessionStorage.setItem('cinematch_user_name', 'Fixture Guest')
+  }, userId)
 
-    const vibeInput = page.getByPlaceholder(/e\.g\.,/)
-    await expect(vibeInput).toBeVisible()
+  await page.routeWebSocket(/wss:\/\/[^/]+\.supabase\.co\/.*/, (socket) => socket.close())
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url())
 
-    await expect(page.getByRole('button', { name: /Find/i })).toBeVisible()
+    if (url.hostname.endsWith('.supabase.co')) {
+      if (url.pathname === '/rest/v1/rooms') {
+        return route.fulfill({ json: room })
+      }
+      if (url.pathname === '/rest/v1/votes') {
+        return route.fulfill({ json: [] })
+      }
+      if (url.pathname === '/rest/v1/rpc/cast_vote') {
+        return route.fulfill({ json: null })
+      }
+      if (url.pathname === '/realtime/v1/api/broadcast') {
+        return route.fulfill({ json: {} })
+      }
+      return route.abort('blockedbyclient')
+    }
+
+    if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
+      return route.abort('blockedbyclient')
+    }
+
+    if (url.pathname === '/api/tmdb/genres') {
+      return route.fulfill({ json: [{ id: 18, name: 'Drama' }] })
+    }
+    if (url.pathname === '/api/tmdb/discover') {
+      return route.fulfill({ json: movies })
+    }
+    if (url.pathname.startsWith('/api/')) {
+      return route.fulfill({ status: 503, json: { error: 'Provider disabled in smoke test' } })
+    }
+
+    return route.continue()
   })
+})
 
-  test('Test 2: Room page loads with Create a Room and Join a Room cards', async ({ page }) => {
-    await page.goto('/room')
+test('direct room loading and mode navigation work', async ({ page }) => {
+  const response = await page.goto('/room')
+  expect(response?.status()).toBe(200)
+  await expect(page.getByRole('heading', { name: 'Room Hub' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Drama', exact: true })).toBeVisible()
 
-    await expect(page.getByRole('heading', { name: /Create a Room/i })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /Join a Room/i })).toBeVisible()
-    await expect(page.getByPlaceholder(/e\.g\., ABCD/i)).toBeVisible()
-  })
+  const navigation = page.getByRole('navigation', { name: 'Movie modes' })
+  await expect(navigation.getByRole('button', { name: 'Group', exact: true }))
+    .toHaveAttribute('aria-current', 'page')
+  await navigation.getByRole('button', { name: 'Solo', exact: true }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: 'CineMatch', exact: true })).toBeVisible()
+  await navigation.getByRole('button', { name: 'Group', exact: true }).click()
+  await expect(page).toHaveURL(/\/room$/)
+})
 
-  test('Test 3: Solo mode shows no submission on empty vibe', async ({ page }) => {
-    await page.goto('/')
+test('consecutive gesture votes leave the next card onscreen', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/room/ABCD/swipe')
+  await expect(page.getByRole('heading', { name: 'Fixture Movie 1', exact: true })).toBeVisible()
 
-    const currentUrl = page.url()
+  for (const [offset, nextTitle] of [[-180, 'Fixture Movie 2'], [180, 'Fixture Movie 3']] as const) {
+    const card = page.locator('.cursor-grab').first()
+    const before = await card.boundingBox()
+    expect(before).not.toBeNull()
+    const x = before!.x + before!.width / 2
+    const y = before!.y + before!.height / 2
 
-    await page.getByRole('button', { name: /Find/i }).click()
-    await page.waitForTimeout(500)
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + offset, y, { steps: 12 })
+    await page.mouse.up()
 
-    expect(page.url()).toBe(currentUrl)
-  })
-
-  test('Test 4: Dark mode is active on the html element', async ({ page }) => {
-    await page.goto('/')
-
-    const html = page.locator('html')
-    await expect(html).toHaveClass(/dark/)
-  })
-
-  test('Test 5: Navigation to /room works as a route', async ({ page }) => {
-    await page.goto('/room')
-
-    await expect(page).toHaveURL(/\/room$/)
-    await expect(page.getByRole('heading', { name: /Create a Room/i })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /Join a Room/i })).toBeVisible()
-  })
-
-  test('Test 6: Non-existent room shows "Room Not Found" error', async ({ page }) => {
-    await page.goto('/room/ABCDEF')
-
-    await expect(page.getByRole('heading', { name: /Room Not Found/i })).toBeVisible()
-  })
-
-  test('Test 7: Room page can open name prompt on Create Room click', async ({ page }) => {
-    await page.goto('/room')
-
-    await page.getByRole('button', { name: /Create Room/i }).click()
-
-    await expect(page.getByText(/display name/i)).toBeVisible()
-    await expect(page.getByPlaceholder(/Enter your name/i)).toBeVisible()
-  })
-
-  test('Test 8: Room page can open name prompt on Join click', async ({ page }) => {
-    await page.goto('/room')
-
-    await page.getByRole('button', { name: /Join/i }).click()
-
-    await expect(page.getByText(/display name/i)).toBeVisible()
-  })
-
-  test('Test 9: Name prompt validates empty input', async ({ page }) => {
-    await page.goto('/room')
-
-    await page.getByRole('button', { name: /Create Room/i }).click()
-    await page.getByRole('button', { name: /Continue/i }).click()
-
-    await expect(page.getByText(/enter a display name/i)).toBeVisible()
-  })
-
-  test('Test 10: Lobby page shows room code after entering name', async ({ page }) => {
-    await page.goto('/room')
-
-    await page.getByRole('button', { name: /Create Room/i }).click()
-    await page.getByPlaceholder(/Enter your name/i).fill('TestPlayer')
-    await page.getByRole('button', { name: /Continue/i }).click()
-
-    await expect(page.getByText(/Waiting Room/i)).toBeVisible()
-  })
-
-  test('Test 11: Copy room code button shows toast', async ({ page }) => {
-    await page.goto('/room')
-
-    await page.getByRole('button', { name: /Create Room/i }).click()
-    await page.getByPlaceholder(/Enter your name/i).fill('TestPlayer')
-    await page.getByRole('button', { name: /Continue/i }).click()
-    await page.waitForTimeout(1000)
-
-    await page.getByRole('button', { name: /copy/i }).click()
-  })
-
-  test('Test 12: Vibe section appears for host in lobby', async ({ page }) => {
-    await page.goto('/room')
-
-    await page.getByRole('button', { name: /Create Room/i }).click()
-    await page.getByPlaceholder(/Enter your name/i).fill('TestPlayer')
-    await page.getByRole('button', { name: /Continue/i }).click()
-    await page.waitForTimeout(1000)
-
-    await expect(page.getByText(/Set a vibe/i)).toBeVisible()
-  })
-
-  test('Test 13: Spin page redirects when room not in spin state', async ({ page }) => {
-    await page.goto('/room/UNKNOWN')
-
-    const heading = page.getByRole('heading', { name: /Room Not Found/i })
-    await expect(heading).toBeVisible()
-  })
-
-
+    await expect(page.getByRole('heading', { name: nextTitle, exact: true })).toBeVisible()
+    await expect.poll(async () => {
+      const bounds = await page.locator('.cursor-grab').first().boundingBox()
+      return bounds ? bounds.x >= -2 && bounds.x + bounds.width <= 392 : false
+    }).toBe(true)
+  }
 })

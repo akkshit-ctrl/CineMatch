@@ -40,6 +40,7 @@ export default function NamePromptModal({ open, onClose, onSubmit }: NamePromptM
           <h2 className="font-display text-lg text-foreground">What should we call you?</h2>
           <button
             onClick={onClose}
+            aria-label="Close name prompt"
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="w-5 h-5" />

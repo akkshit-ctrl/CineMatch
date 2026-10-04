@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useRef } from 'react'
+import React, { useCallback, useLayoutEffect, useRef } from 'react'
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion'
 import Image from 'next/image'
 import { Star } from 'lucide-react'
@@ -19,9 +19,22 @@ const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeL
   const current = movies[currentIndex]
   const nextMovies = movies.slice(currentIndex + 1, currentIndex + 3)
   const isAnimating = useRef(false)
+  const animationGeneration = useRef(0)
+  const activeAnimation = useRef<ReturnType<typeof animate> | null>(null)
 
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-300, 0, 300], [-15, 0, 15])
+
+  useLayoutEffect(() => {
+    x.set(0)
+
+    return () => {
+      animationGeneration.current += 1
+      isAnimating.current = false
+      activeAnimation.current?.stop()
+      activeAnimation.current = null
+    }
+  }, [current?.id, onSwipeLeft, onSwipeRight, x])
 
   const nopeOpacity = useTransform(x, (v: number) => {
     if (v >= -100) return 0
@@ -39,16 +52,26 @@ const SwipeDeck = React.memo(function SwipeDeck({ movies, currentIndex, onSwipeL
     const offset = info.offset.x
     if (offset < -100) {
       isAnimating.current = true
-      await animate(x, -500, { duration: 0.2, ease: 'easeOut' })
+      const generation = ++animationGeneration.current
+      const animation = animate(x, -500, { duration: 0.2, ease: 'easeOut' })
+      activeAnimation.current = animation
+      await animation
+      if (generation !== animationGeneration.current) return
+      activeAnimation.current = null
       isAnimating.current = false
       onSwipeLeft(current.id)
     } else if (offset > 100) {
       isAnimating.current = true
-      await animate(x, 500, { duration: 0.2, ease: 'easeOut' })
+      const generation = ++animationGeneration.current
+      const animation = animate(x, 500, { duration: 0.2, ease: 'easeOut' })
+      activeAnimation.current = animation
+      await animation
+      if (generation !== animationGeneration.current) return
+      activeAnimation.current = null
       isAnimating.current = false
       onSwipeRight(current.id)
     } else {
-      animate(x, 0, { type: 'spring', stiffness: 300, damping: 20 })
+      activeAnimation.current = animate(x, 0, { type: 'spring', stiffness: 300, damping: 20 })
     }
   }, [current, onSwipeLeft, onSwipeRight, x])
 

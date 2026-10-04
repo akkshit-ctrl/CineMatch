@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import GenrePill from '@/components/genre-pill'
@@ -11,6 +11,18 @@ import { Users, ArrowRight, Loader2 } from 'lucide-react'
 interface Genre {
   id: number
   name: string
+}
+
+type PendingRoomAction =
+  | { kind: 'create'; genreId?: number }
+  | { kind: 'join'; code: string }
+
+function isGenre(value: unknown): value is Genre {
+  if (typeof value !== 'object' || value === null) return false
+
+  const genre = value as { id?: unknown; name?: unknown }
+  return typeof genre.id === 'number' && Number.isInteger(genre.id) && genre.id > 0 &&
+    typeof genre.name === 'string' && genre.name.trim().length > 0
 }
 
 function generateUserId(): string {
@@ -28,68 +40,89 @@ export default function RoomPage() {
   const [joinCode, setJoinCode] = useState('')
   const [genreId, setGenreId] = useState('')
   const [genres, setGenres] = useState<Genre[]>([])
+  const [genreError, setGenreError] = useState('')
   const [creating, setCreating] = useState(false)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState('')
   const [showNamePrompt, setShowNamePrompt] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingRoomAction | null>(null)
+  const actionInFlight = useRef(false)
 
   useEffect(() => {
-    fetch('/api/tmdb/genres')
-      .then((res) => res.json())
-      .then((data) => setGenres(data.genres || []))
-      .catch(() => {})
+    const controller = new AbortController()
+
+    const loadGenres = async () => {
+      try {
+        const response = await fetch('/api/tmdb/genres', { signal: controller.signal })
+        if (!response.ok) throw new Error('Genre request failed')
+
+        const data: unknown = await response.json()
+        if (!Array.isArray(data) || !data.every(isGenre)) {
+          throw new Error('Invalid genre response')
+        }
+
+        if (!controller.signal.aborted) setGenres(data)
+      } catch {
+        if (!controller.signal.aborted) {
+          setGenreError('Genre filters could not be loaded. You can continue with Any Genre.')
+        }
+      }
+    }
+
+    void loadGenres()
+    return () => controller.abort()
   }, [])
 
-  const ensureName = (): boolean => {
-    const name = sessionStorage.getItem('cinematch_user_name')
-    if (!name) {
-      setShowNamePrompt(true)
-      return false
-    }
-    return true
-  }
-
-  const handleCreate = async () => {
-    if (!ensureName()) return
-
-    setCreating(true)
+  const performAction = async (action: PendingRoomAction) => {
+    if (actionInFlight.current) return
+    actionInFlight.current = true
     setError('')
+    setCreating(action.kind === 'create')
+    setJoining(action.kind === 'join')
 
     try {
-      const userId = generateUserId()
-      const room = await createRoom(
-        userId,
-        genreId ? parseInt(genreId, 10) : undefined
-      )
-      router.push(`/room/${room.id}`)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create room')
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!joinCode.trim()) return
-    if (!ensureName()) return
-
-    setJoining(true)
-    setError('')
-
-    try {
-      const room = await getRoom(joinCode.trim().toUpperCase())
-      if (!room) {
-        setError('Room not found. Check the code and try again.')
-        return
+      if (action.kind === 'create') {
+        const room = await createRoom(generateUserId(), action.genreId)
+        router.push(`/room/${room.id}`)
+      } else {
+        const room = await getRoom(action.code)
+        if (!room) {
+          setError('Room not found. Check the code and try again.')
+          return
+        }
+        generateUserId()
+        router.push(`/room/${room.id}`)
       }
-      generateUserId()
-      router.push(`/room/${room.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to join room')
+      const fallback = action.kind === 'create' ? 'Failed to create room' : 'Failed to join room'
+      setError(err instanceof Error ? err.message : fallback)
     } finally {
+      actionInFlight.current = false
+      setCreating(false)
       setJoining(false)
     }
+  }
+
+  const requestAction = (action: PendingRoomAction) => {
+    if (actionInFlight.current) return
+    if (!sessionStorage.getItem('cinematch_user_name')) {
+      setPendingAction(action)
+      setShowNamePrompt(true)
+      return
+    }
+
+    void performAction(action)
+  }
+
+  const handleCreate = () => requestAction({
+    kind: 'create',
+    genreId: genreId ? Number(genreId) : undefined,
+  })
+
+  const handleJoin = (e: React.FormEvent) => {
+    e.preventDefault()
+    const code = joinCode.trim().toUpperCase()
+    if (code) requestAction({ kind: 'join', code })
   }
 
   return (
@@ -131,12 +164,17 @@ export default function RoomPage() {
                 />
               ))}
             </div>
+            {genreError && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {genreError}
+              </p>
+            )}
           </div>
 
           <Button
             variant="gold"
             onClick={handleCreate}
-            disabled={creating}
+            disabled={creating || joining}
             className="w-full"
           >
             {creating ? (
@@ -165,7 +203,7 @@ export default function RoomPage() {
             <Button
               type="submit"
               variant="gold-outline"
-              disabled={joining || !joinCode.trim()}
+              disabled={creating || joining || !joinCode.trim()}
               className="w-full"
             >
               {joining ? (
@@ -185,10 +223,16 @@ export default function RoomPage() {
 
       <NamePromptModal
         open={showNamePrompt}
-        onClose={() => setShowNamePrompt(false)}
+        onClose={() => {
+          setPendingAction(null)
+          setShowNamePrompt(false)
+        }}
         onSubmit={(name) => {
           sessionStorage.setItem('cinematch_user_name', name)
+          const action = pendingAction
+          setPendingAction(null)
           setShowNamePrompt(false)
+          if (action) void performAction(action)
         }}
       />
     </div>
